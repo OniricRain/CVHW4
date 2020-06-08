@@ -153,9 +153,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="cylindricalProj.cpp" />
     <ClCompile Include="HW4.cpp" />
-    <ClCompile Include="imageEqualization.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="myinclude.h" />
