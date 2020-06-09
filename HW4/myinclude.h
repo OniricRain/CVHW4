@@ -7,6 +7,7 @@
 #include <opencv2/core.hpp>
 #include <tuple>
 #include <opencv2/features2d.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
 using namespace std;
 using namespace cv;
 
@@ -123,7 +124,7 @@ void maskImages(const Mat& imgleft, const Mat& imgright, Mat& maskRight, Mat& ma
 }
 
 void orbDetection(Mat& img, Mat& mask, vector<KeyPoint>& keypoints, Mat& descriptors) {
-	int nfeatures = 300;//300
+	int nfeatures = 500;//300
 	int FASTthres = 20;//25
 	Ptr<ORB> orb = ORB::create(nfeatures,1.2f,8,31,0,2,ORB::HARRIS_SCORE,31,FASTthres);
 	//Ptr<AKAZE> akaze = AKAZE::create(); TODO IMPLEMENT AKAZE
@@ -144,7 +145,7 @@ void matchingRefine(vector<DMatch>& matches, vector<KeyPoint>& keypoints1, vecto
 		tab.at<float>(i, 0) = matches[i].distance;
 	sortIdx(tab, index, SORT_EVERY_COLUMN + SORT_ASCENDING);
 	vector<DMatch> bestMatches;
-	int limit = 100;//GOOD
+	int limit = 150;//GOOD
 		if (nbMatch < limit) {
 			limit = nbMatch;
 		}
@@ -159,9 +160,35 @@ void matchingRefine(vector<DMatch>& matches, vector<KeyPoint>& keypoints1, vecto
 	}
 	matches = bestMatches;
 }
+/*
+void myRANSAC(Mat& H, vector<Point2f>& kp1_refined, vector<Point2f>& kp2_refined) {
+	int r, Ncounter = 0, Ocounter = 0;
+	float s_x, s_y, s_xn, s_yn, fin_x, fin_y;
+	vector<int> corr;
+	for (size_t k = 0; k < 50; k++)
+	{
+		r = rand() % kp1_refined.size;
+		s_x = kp2_refined.at(r).x - kp1_refined.at(r).x;
+		s_y = kp2_refined.at(r).y - kp1_refined.at(r).y;
+		for (size_t n = 0 ; n < kp1_refined.size(); ++n)
+		{
+			s_xn = kp2_refined.at(n).x - kp1_refined.at(n).x;
+			s_yn = kp2_refined.at(n).y - kp1_refined.at(n).y;
+			if (abs(s_xn - s_x) + abs(s_yn - s_y) < 5) {
+				Ncounter = Ncounter + 1;
+				corr[]
+			}
+		}
+		if (Ncounter > Ocounter) {
+			Ocounter = Ncounter;
+			fin_x = s_x;
+			fin_y = s_y;
 
+		}
+	}
+}*/
 void homogTranslation(Mat& H, vector<Point2f>& kp1_refined, vector<Point2f>& kp2_refined) {
-	H = findHomography(kp2_refined, kp1_refined, RANSAC);
+	H = findHomography(kp2_refined, kp1_refined, RANSAC,3);
 	H.at<double>(0, 0) = 1;
 	H.at<double>(1, 0) = 0;
 	H.at<double>(0, 1) = 0;
@@ -185,12 +212,23 @@ void alphaBlend(Mat& img1, Mat&img2, Mat& mask, Mat& blended) {
 
 void connectingImages(Mat& imgleft, Mat& imgright, Mat& H, Mat& result,int firstWidth) {
 	Mat rightWarped;
-	warpPerspective(imgright, rightWarped, H, cv::Size(firstWidth + H.at<double>(0, 2), imgleft.rows));
+	warpPerspective(imgright, rightWarped, H, cv::Size(imgleft.cols + H.at<double>(0, 2), imgleft.rows));
+	
+
+	//resize right part
+	Mat biggerRight(result.rows, result.cols + H.at<double>(0, 2), CV_8UC3, Scalar(0));
+	Mat rightPart(biggerRight, Rect(biggerRight.cols - rightWarped.cols, 0, rightWarped.cols, rightWarped.rows));
+	rightWarped.copyTo(rightPart);
+	
+	//resize left part
+	Mat biggerLeft(result.rows, result.cols + H.at<double>(0, 2), CV_8UC3, Scalar(0));
+	Mat leftPart(biggerLeft, Rect(0, 0, result.cols, result.rows));
+	result.copyTo(leftPart);
 	
 	//blending mask
-	Mat mask(rightWarped.rows, rightWarped.cols, CV_8U, Scalar(255));
+	Mat mask(result.rows, result.cols + H.at<double>(0, 2), CV_8U, Scalar(255));
 	int value = 255;
-	for (int c = imgleft.cols-32; c <mask.cols; c++)
+	for (int c = result.cols-32; c <mask.cols; c++)
 	{
 		if (value > 0) {
 			mask.col(c).setTo(value);
@@ -201,15 +239,9 @@ void connectingImages(Mat& imgleft, Mat& imgright, Mat& H, Mat& result,int first
 			mask.col(c).setTo(0);
 		}
 	}
-
-
-	//resize left part
-	Mat biggerLeft(rightWarped.rows, rightWarped.cols, CV_8UC3, Scalar(0));
-	Mat leftPart(biggerLeft, Rect(0, 0, imgleft.cols, imgleft.rows));
-	imgleft.copyTo(leftPart);
 	
 	//alpha blending
-	alphaBlend(biggerLeft, rightWarped, mask, result);
+	alphaBlend(biggerLeft, biggerRight, mask, result);
 }
 
 void addRight(Mat& imgleft, Mat& imgright, Mat& result,int firstWidth,int i){
@@ -240,10 +272,10 @@ void addRight(Mat& imgleft, Mat& imgright, Mat& result,int firstWidth,int i){
 	//Drawing matches
 	Mat comparison;
 	cv::drawMatches(imgleft, keypoints1, imgright, keypoints2, matches, comparison);
-	string filename = "comparison " + to_string(i-1)+"-"+ to_string(i)+".png";
-	imwrite(filename, comparison);
-	//cv::imshow(filename, comparison);
-	//cv::waitKey();
+	//string filename = "comparison " + to_string(i-1)+"-"+ to_string(i)+".png";
+	//imwrite(filename, comparison);
+	cv::imshow("comparison", comparison);
+	cv::waitKey(1000);
 
 	//extract translation matrix from homography
 	Mat H;
@@ -252,7 +284,9 @@ void addRight(Mat& imgleft, Mat& imgright, Mat& result,int firstWidth,int i){
 	std::cout << H << endl;
 	std::cout << "connecting images"<<endl;
 	connectingImages(imgleft, imgright, H, result,firstWidth);
-	/*imshow("result", result);
-	waitKey();
-	destroyWindow(filename);*/
+	
+	//cv::imshow("result", result);
+	//cv::waitKey();
+	//cv::destroyWindow(filename);
+	
 }

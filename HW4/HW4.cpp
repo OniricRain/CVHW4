@@ -18,7 +18,7 @@ int main(int argc, char** argv)//TODO control this
 	//glob("lab/*.bmp",filepath, false);
 	glob("kitchen/*.bmp", filepath, false);
 
-	Mat imgleft = cv::imread(filepath[6]);
+	Mat imgleft = cv::imread(filepath[0]);
 	int firstWidth = imgleft.cols;
 	imgleft = cylindricalProj(imgleft, 33);
 	//imshow("testcolor", imgleft);
@@ -27,15 +27,15 @@ int main(int argc, char** argv)//TODO control this
 
 	//TODO try CLAHE
 	int n = filepath.size();
-	//int n = 9;
-	Mat result;
-	for (size_t i = 7; i < n; i++)
+	//int n = 3;
+	Mat result = imgleft;
+	for (size_t i = 1; i < n; i++)
 	{
 		std::cout << "Processing image number " << i << endl;
 		Mat imgright = cv::imread(filepath[i]);
 		imgright = imageEqualization((void*)&imgright);
 		addRight(imgleft, imgright, result,firstWidth,i);
-		imgleft = result;
+		imgleft = imgright;
 	}
 	//cv::imshow("result", result);
 	imwrite("resultBlended.png", result);
